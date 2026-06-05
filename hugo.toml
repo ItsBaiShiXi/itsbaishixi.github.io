@@ -1,0 +1,10 @@
+baseURL = 'https://baishixi.blog/'
+languageCode = 'en-us'
+title = "BaiShiXi's Blog"
+theme = 'hugo-simple'
+
+[params]
+  mainSections = ["posts"]
+
+[markup.goldmark.renderer]
+unsafe = true
