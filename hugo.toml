@@ -6,5 +6,10 @@ theme = 'hugo-simple'
 [params]
   mainSections = ["posts"]
 
+[[menu.main]]
+name = "Posts"
+pageRef = "/posts"
+weight = 10
+
 [markup.goldmark.renderer]
 unsafe = true

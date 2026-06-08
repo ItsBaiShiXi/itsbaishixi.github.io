@@ -6,15 +6,49 @@
     <description>Recent content on BaiShiXi&#39;s Blog</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Thu, 04 Jun 2026 21:15:45 -0700</lastBuildDate>
+    <lastBuildDate>Sun, 07 Jun 2026 13:16:01 -0700</lastBuildDate>
     <atom:link href="http://localhost:1313/posts/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>How Much Policy Does a VLA Actually Need?</title>
+      <link>http://localhost:1313/posts/vla-policy-size/</link>
+      <pubDate>Sun, 07 Jun 2026 13:16:01 -0700</pubDate>
+      <guid>http://localhost:1313/posts/vla-policy-size/</guid>
+      <description>&lt;p&gt;&lt;img src=&#34;http://localhost:1313/images/VLA.png&#34; alt=&#34;Structure of Qwen&#34;&gt;&lt;/p&gt;
+&lt;p&gt;Vision-Language-Action (VLA) models are increasingly capable but computationally heavy, raising a critical question for edge deployment: &lt;strong&gt;how much parameter capacity is actually necessary in the action policy head?&lt;/strong&gt; Initial attempts to test this by swapping in smaller, text-only policies revealed a core architectural challenge—backbone capacity and visual grounding become fundamentally entangled, making it impossible to isolate the true effect of policy size.&lt;/p&gt;
+&lt;p&gt;To achieve clean variable isolation, we pivoted to a modular architecture using &lt;strong&gt;Foundry-VLA-1.7B&lt;/strong&gt;. By freezing the vision and language backbones, we trained Diffusion Policy Heads of three distinct sizes (77M, 205M, and 410M parameters) from scratch. In this post, we explore the architectural lessons learned from our early experiments and present comprehensive physical rollout evaluations to determine the optimal trade-off between model size, latency, and physical task success.&lt;/p&gt;</description>
+      <content:encoded><![CDATA[<p><img src="/images/VLA.png" alt="Structure of Qwen"></p>
+<p>Vision-Language-Action (VLA) models are increasingly capable but computationally heavy, raising a critical question for edge deployment: <strong>how much parameter capacity is actually necessary in the action policy head?</strong> Initial attempts to test this by swapping in smaller, text-only policies revealed a core architectural challenge—backbone capacity and visual grounding become fundamentally entangled, making it impossible to isolate the true effect of policy size.</p>
+<p>To achieve clean variable isolation, we pivoted to a modular architecture using <strong>Foundry-VLA-1.7B</strong>. By freezing the vision and language backbones, we trained Diffusion Policy Heads of three distinct sizes (77M, 205M, and 410M parameters) from scratch. In this post, we explore the architectural lessons learned from our early experiments and present comprehensive physical rollout evaluations to determine the optimal trade-off between model size, latency, and physical task success.</p>
+<hr>
+<h2 id="motivation-the-vla-bottleneck">Motivation: The VLA Bottleneck</h2>
+<p>VLA models are getting smart, but they are also getting heavy. In practical robotics, deploying massive models onboard leads to high latency, which translates directly to sluggish physical control.</p>
+<p>From a practical standpoint, a smaller policy head reduces latency and onboard compute, making rollouts faster. We set out to discover if the action head actually benefits from being massive, or if we could optimize it without losing capability.</p>
+<h2 id="attempt-1-the-entanglement-problem">Attempt 1: The Entanglement Problem</h2>
+<p>We initially set out to test this using the <strong>OpenVLA</strong> architecture—specifically LAPA (Latent Action Pretraining from Videos). Our idea was to swap out the massive policy for smaller, text-only Pythia models (160M, 410M, 1B) to see how size affected performance.</p>
+<p>However, our 160M model had a validation accuracy of just <strong>12.6%</strong> on the SIMPLER evaluation. We realized the issue wasn’t just the parameter count.</p>
+<blockquote>
+<p>In the original OpenVLA architecture, the LLaMA-2 backbone acts as both the reasoning engine and the visual interpreter. Because LLaMA-2 was fine-tuned on billions of image-text and video-text pairs, it already intrinsically knows how to map visual tokens to real-world concepts.</p></blockquote>
+<p>Pythia, however, is a text-only model. When we swapped LLaMA-2 for Pythia, we didn’t just shrink the network’s size—<strong>we made the model blind.</strong> Pythia had no prior knowledge of how to interpret an image or a frame, meaning it had to learn complex visual observation tokens entirely from scratch during our task training, which is highly unrealistic.</p>
+<h2 id="enter-foundry-vla-isolating-the-action-head">Enter Foundry-VLA: Isolating the Action Head</h2>
+<p>To get a clean read on policy capacity, we moved to <strong>Foundry VLA 1.7B</strong>.</p>
+<p>We kept the ViT encoder and the LLM transformer entirely frozen. The only part we tuned was the <strong>Diffusion Policy Head</strong>, which we trained from scratch. We tested three diffusion head sizes:</p>
+<ul>
+<li><strong>77M</strong> parameters</li>
+<li><strong>205M</strong> parameters</li>
+<li><strong>410M</strong> parameters</li>
+</ul>
+<h2 id="initial-signals-validation-loss">Initial Signals: Validation Loss</h2>
+<p>Before hitting the robots, the validation loss across our tasks (<em>PickAndPlaceBox</em>, <em>PutOrangeOnSaucer</em>, <em>PushBox</em>) showed a clear, consistent trend. Moving from a 77M head to a 410M head resulted in a validation loss decrease of roughly <strong>6.5% to 10%</strong> depending on the task.</p>
+<p>Validation loss is a helpful proxy, but it doesn’t always map to true physical task success. To truly answer our question, we needed to see these heads control the robot.</p>
+]]></content:encoded>
+    </item>
     <item>
       <title>Hello World</title>
       <link>http://localhost:1313/posts/hello-world/</link>
       <pubDate>Thu, 04 Jun 2026 21:15:45 -0700</pubDate>
       <guid>http://localhost:1313/posts/hello-world/</guid>
-      <description>&lt;p&gt;Here is my first post!&lt;/p&gt;</description>
-      <content:encoded><![CDATA[<p>Here is my first post!</p>
+      <description>&lt;p&gt;Here is my first&lt;/p&gt;</description>
+      <content:encoded><![CDATA[<p>Here is my first</p>
 ]]></content:encoded>
     </item>
   </channel>
