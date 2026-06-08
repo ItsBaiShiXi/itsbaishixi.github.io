@@ -18,7 +18,7 @@ VLA models are getting smart, but they are also getting heavy. In practical robo
 From a practical standpoint, a smaller policy head reduces latency and onboard compute, making rollouts faster. We set out to discover if the action head actually benefits from being massive, or if we could optimize it without losing capability.
 
 ## Attempt 1: The Entanglement Problem
-
+![From LLaMA-2 to Pythia](/images/LAPA.png)
 We initially set out to test this using the **OpenVLA** architecture—specifically LAPA (Latent Action Pretraining from Videos). Our idea was to swap out the massive policy for smaller, text-only Pythia models (160M, 410M, 1B) to see how size affected performance. 
 
 However, our 160M model had a validation accuracy of just **12.6%** on the SIMPLER evaluation. We realized the issue wasn’t just the parameter count. 

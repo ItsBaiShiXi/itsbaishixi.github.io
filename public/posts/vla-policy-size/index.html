@@ -120,7 +120,8 @@ To achieve clean variable isolation, we pivoted to a modular architecture using 
 <p>VLA models are getting smart, but they are also getting heavy. In practical robotics, deploying massive models onboard leads to high latency, which translates directly to sluggish physical control.</p>
 <p>From a practical standpoint, a smaller policy head reduces latency and onboard compute, making rollouts faster. We set out to discover if the action head actually benefits from being massive, or if we could optimize it without losing capability.</p>
 <h2 id="attempt-1-the-entanglement-problem">Attempt 1: The Entanglement Problem</h2>
-<p>We initially set out to test this using the <strong>OpenVLA</strong> architecture—specifically LAPA (Latent Action Pretraining from Videos). Our idea was to swap out the massive policy for smaller, text-only Pythia models (160M, 410M, 1B) to see how size affected performance.</p>
+<p><img src="/images/LAPA.png" alt="From LLaMA-2 to Pythia">
+We initially set out to test this using the <strong>OpenVLA</strong> architecture—specifically LAPA (Latent Action Pretraining from Videos). Our idea was to swap out the massive policy for smaller, text-only Pythia models (160M, 410M, 1B) to see how size affected performance.</p>
 <p>However, our 160M model had a validation accuracy of just <strong>12.6%</strong> on the SIMPLER evaluation. We realized the issue wasn’t just the parameter count.</p>
 <blockquote>
 <p>In the original OpenVLA architecture, the LLaMA-2 backbone acts as both the reasoning engine and the visual interpreter. Because LLaMA-2 was fine-tuned on billions of image-text and video-text pairs, it already intrinsically knows how to map visual tokens to real-world concepts.</p></blockquote>

@@ -11,9 +11,6 @@
     <loc>http://localhost:1313/posts/</loc>
     <lastmod>2026-06-07T13:16:01-07:00</lastmod>
   </url><url>
-    <loc>http://localhost:1313/posts/hello-world/</loc>
-    <lastmod>2026-06-04T21:15:45-07:00</lastmod>
-  </url><url>
     <loc>http://localhost:1313/categories/</loc>
   </url><url>
     <loc>http://localhost:1313/tags/</loc>
