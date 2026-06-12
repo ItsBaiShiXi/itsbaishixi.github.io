@@ -1,26 +1,15 @@
+{{ define "title" }}
+  {{- with .Site.GetPage "/posts/vla-policy-size" -}}
+    {{ .Title }}&nbsp;|&nbsp;{{ .Site.Title }}
+  {{- else -}}
+    {{ .Site.Title }}
+  {{- end -}}
+{{ end }}
+
 {{ define "main" }}
-  {{ .Content }}
-  <content>
-    <ul class="blog-posts">
-      {{ $mainSection := index .Site.MainSections 0 }}
-      {{ range (where .Site.RegularPages "Section" $mainSection) }}
-        <li>
-          <span>
-            <i>
-              <time datetime="{{ .Date.Format "2006-01-02" }}" pubdate>
-                {{ .Date.Format (default "2006-01-02" .Site.Params.dateFormat) }}
-              </time>
-            </i>
-          </span>
-          {{ if .Params.link }}
-            <a href="{{ .Params.link }}" target="_blank">{{ .Title }} ↪</a>
-          {{ else }}
-            <a href="{{ .RelPermalink }}">{{ .Title }}</a>
-          {{ end }}
-        </li>
-      {{ else }}
-        <li>No posts yet.</li>
-      {{ end }}
-    </ul>
-  </content>
+  {{ with .Site.GetPage "/posts/vla-policy-size" }}
+    {{ partial "report-page.html" . }}
+  {{ else }}
+    <p>The report could not be loaded.</p>
+  {{ end }}
 {{ end }}

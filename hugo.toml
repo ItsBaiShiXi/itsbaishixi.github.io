@@ -1,4 +1,5 @@
 baseURL = 'https://baishixi.blog/'
+relativeURLs = true
 languageCode = 'en-us'
 title = "BaiShiXi's Blog"
 theme = 'hugo-simple'
