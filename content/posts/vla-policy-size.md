@@ -15,7 +15,7 @@ This approach has become increasingly prominent since systems such as [RT-2](htt
 
 The same scale that makes these models useful also makes them difficult to deploy. A mobile manipulator or low-cost robot may have an embedded GPU, CPU, or accelerator rather than a datacenter GPU. Its model must share memory, power, and thermal headroom with camera processing, logging, safety checks, and low-level control. Cloud inference is possible, but network delay and connectivity are undesirable in a feedback loop where every action changes the next observation. Recent projects such as [SmolVLA](https://arxiv.org/abs/2506.01844) and [EdgeVLA](https://arxiv.org/abs/2507.14049) make compact training and edge inference explicit research goals.
 
-These deployment constraints motivate smaller VLAs, but they do not tell us which part should be made smaller. A VLA may contain a visual encoder, a language or multimodal backbone, and a specialized action-producing network. If we shrink the entire system at once, a change in behavior could come from weaker perception, weaker language grounding, or weaker action modeling.
+Smaller VLAs would be easier to deploy, but a VLA contains several components that can be reduced independently: the visual encoder, the language or multimodal backbone, and the action network. Shrinking all of them at once would make it difficult to tell which change affected performance.
 
 This report asks a narrower question:
 
@@ -89,7 +89,7 @@ The practical reason was familiarity. We had already spent substantial time read
 
 The theoretical reason was LAPA's policy objective. LAPA formulates action learning as **conditional sequence prediction**: given visual context and an instruction, the model predicts a short sequence of discrete action-related tokens. Replacing one causal transformer with another is therefore structurally plausible. The target is also compact: four latent-action tokens, each selected from a vocabulary of eight codes.
 
-This gave us a reasonable first experiment. To understand the intervention, however, we need to distinguish the original LAPA system from the components we introduced.
+We therefore began by replacing LAPA's backbone. The following sections describe the original system and the components we changed.
 
 ### The original LAPA-7B setup
 
@@ -206,8 +206,8 @@ The `12.6%` action-token accuracy should not be compared with the earlier `12.5%
 
 ### What the results suggest
 
-1. **Replacing LAPA's multimodal backbone removed a crucial visual prior.** The original LWM backbone had been trained extensively on image and video data. Its transformer had therefore learned how visual tokens describe objects, scenes, and temporal changes, and how those tokens interact with language. Pythia, by contrast, was pretrained only on text. It still received vectors from LAPA's frozen visual embedding table, but it had never learned what those visual vectors meant or how to reason over them. In that practical sense, the swap made the central backbone nearly blind to the meaning of its visual input.
-2. **The projection layers could not replace multimodal pretraining.** The two learned projections reconciled hidden dimensions and gave gradients a path through the replacement model, but dimensional compatibility is not semantic compatibility. They also had to teach a text-pretrained transformer how to use LAPA's visual-language representation from the comparatively narrow adapter dataset. The experiment therefore measured both backbone capacity and the difficulty of recovering a missing multimodal representation.
+1. **Replacing LAPA's multimodal backbone removed a crucial visual prior.** The original LWM backbone had been trained extensively on image and video data. Its transformer had therefore learned how visual tokens describe objects, scenes, and temporal changes, and how those tokens interact with language. Pythia, by contrast, was pretrained only on text. Although it received vectors from LAPA's frozen visual embedding table, it had not been pretrained to interpret those vectors or relate them to language. The replacement therefore removed much of the visual knowledge available to the original backbone.
+2. **The projection layers could not replace multimodal pretraining.** The two learned projections matched the hidden dimensions, but they did not provide the multimodal pretraining that Pythia lacked. The adapter training also had to teach a text-pretrained transformer how to use LAPA's visual and language embeddings, making the experiment about more than backbone size.
 3. **Additional capacity may help fit the latent-action task, but the evidence is weak.** The 410M model achieved the highest validation accuracy, slightly above 160M. Only three saved epochs were evaluated for the 1B model; longer training or different optimization might allow it to fit better. However, the observed differences are below one percentage point, are not monotonic, and come from one run per size, so they do not establish a scaling trend.
 4. **Generalization was a larger problem than fitting capacity.** The latent-action models learned far above chance, but validation performance plateaued early. On SIMPLER, the 160M model nearly memorized the training set while validation loss worsened. More parameters alone would not resolve this data and regularization problem.
 5. **Success at one evaluation stage did not transfer automatically to the next.** Predicting LAPA's latent codes above chance did not produce a generalizing robot-action predictor:
@@ -220,11 +220,11 @@ action-token generalization
 closed-loop task success
 ```
 
-The experiment still produced a working interchangeable-backbone system and showed that smaller Pythia models could learn LAPA's latent labels. More importantly, it showed why replacing the entire multimodal backbone was not a clean test of policy capacity. We needed an experiment that preserved the same pretrained visual-language representation for every model and changed only the action-producing network.
+The smaller Pythia models learned to predict LAPA's latent labels, and the interchangeable-backbone implementation worked. However, replacing the multimodal backbone changed both model capacity and the model's prior exposure to visual data. We therefore moved to a setup that kept the visual-language representation fixed and changed only the action network.
 
 ## Isolating Policy Capacity with FoundryVLA
 
-This requirement led us to [VLA Foundry](https://arxiv.org/abs/2604.19728). Unlike the LAPA swap, Foundry separates a pretrained vision-language backbone from a dedicated action expert. We could therefore keep the component that interprets images and language identical across every run, while changing only the network responsible for producing actions.
+[VLA Foundry](https://arxiv.org/abs/2604.19728) provides this separation through a pretrained vision-language backbone and a dedicated action policy. We kept the backbone fixed across runs and varied only the action policy.
 
 Our starting point was the released [Foundry-VLA-1.7B-full](https://huggingface.co/TRI-ML/Foundry-VLA-1.7B-full) checkpoint, a 1.7B-parameter VLA for bimanual manipulation. Its model card identifies the vision-language backbone as a separately released checkpoint, [Foundry-VLM-1.3B-200M](https://huggingface.co/TRI-ML/Foundry-VLM-1.3B-200M), with a 24-layer flow-matching action head on top. We did not reuse the released action head, because a single fixed head cannot answer a capacity question. Instead, we downloaded the same `Foundry-VLM-1.3B-200M` backbone checkpoint, froze it, and trained our own action policies of varying depth on top of it. The deepest of our three presets matches the released head's architecture (24 layers, hidden dimension 1,024, 16 attention heads), so our largest rung can be read as a from-scratch retraining of the released component under a far smaller data budget.
 
@@ -236,7 +236,7 @@ The frozen backbone received a language instruction and the six simulated camera
   caption="Our FoundryVLA setup. The pretrained vision-language backbone — ViT encoder, pooling, and LLM transformer (snowflakes) — stays frozen in every run. Only the flow-transformer action policy (flame) is trained, at the depths corresponding to our 77M, 205M, and 410M presets."
 >}}
 
-The policy itself is a flow-matching model: starting from random noise, it learns to gradually shape that noise into a continuous action, guided by the backbone's features. Two properties matter for this study. The formulation predicts continuous, possibly multimodal actions directly, with no need to discretize motor commands into tokens; and the policy is a self-contained module, so we can resize it while the frozen VLM and its visual-language representation stay identical across every run.
+The policy uses flow matching to transform random noise into a continuous action conditioned on the backbone's features. It predicts continuous actions without discretizing them into tokens. Because the policy is separate from the VLM, we can vary its depth while keeping the visual-language representation fixed.
 
 
 ### A depth-only scaling axis
@@ -292,7 +292,7 @@ We therefore use validation MSE to measure held-out action prediction and simula
 
 The measured ordering is monotonic on all three tasks. From the 6-layer to the 24-layer policy, MSE decreases by about 10.0% on PickAndPlaceBox, 6.5% on PutOrangeOnSaucer, and 6.0% on PushBox.
 
-The shape is not identical across tasks. PickAndPlaceBox improves at both depth increases. On PutOrangeOnSaucer, the 6-layer and 12-layer policies are close, and most of the measured gain appears at 24 layers. PushBox also improves monotonically, but it has the fewest sequences and the smallest validation split, so its estimate should be interpreted more cautiously.
+The size of the improvement varies by task. PickAndPlaceBox improves with each increase in depth. The 6-layer and 12-layer results on PutOrangeOnSaucer are similar, with most of the improvement appearing at 24 layers. PushBox also improves with depth, although its smaller dataset and validation split make that comparison less certain.
 
 Under this single-seed, 40K-sample setup, deeper policy heads fit held-out actions better. The experiment does not establish whether these differences exceed seed-to-seed variation.
 
@@ -336,26 +336,26 @@ Two findings stand out:
 1. **Policy depth affected held-out action prediction.** The 24-layer policy reached lower validation MSE than the 6-layer policy on all three tasks. This provides evidence that the smallest policy was capacity-limited under the supervised objective, although one seed is not enough to establish a general scaling law.
 2. **Better offline prediction did not produce reliable closed-loop control.** The rollout counts weakly followed the MSE ordering on PickAndPlaceBox, but all success rates remained low, and every model failed PutOrangeOnSaucer.
 
-The key question is how to explain the gap between these two observations. Increasing policy depth helped the models imitate held-out actions more accurately, but none of the policies produced dependable closed-loop behavior.
+Increasing policy depth improved held-out action prediction, but none of the policies produced reliable closed-loop behavior. The current experiments do not isolate the cause of this gap.
 
-This gap is unlikely to be explained by architecture alone. The released Foundry-VLA-1.7B-full model was trained on 102 million samples spanning many simulated and real bimanual tasks. By contrast, each of our policies saw only 40,000 samples from a single task. Since the architecture is identical, the performance difference points most strongly to the training regime: our policies are likely both undertrained and too narrowly tuned, so closed-loop drift quickly pushes them out of distribution.
+This gap is unlikely to be explained by architecture alone. The released Foundry-VLA-1.7B-full model was trained on 102 million samples spanning many simulated and real bimanual tasks. By contrast, each of our policies saw only 40,000 samples from a single task. The much smaller and less diverse training set is one likely reason for the performance difference. Our policies may be undertrained or too narrowly fit to individual tasks, but the current experiments cannot separate these effects.
 
-Because we ran out of compute and time before we could isolate the cause, we close with the two explanations we find most plausible, along with the test each one suggests.
+We did not have enough time or compute to test the cause directly. Two possible explanations are insufficient training and covariate shift.
 
 **Hypothesis 1 — undertrained for flow matching.** Our fixed budget of 40,000 samples is roughly 312 optimizer steps. Flow- and diffusion-based manipulation policies such as [Diffusion Policy](https://arxiv.org/abs/2303.04137) are typically trained for tens to hundreds of thousands of steps. An under-converged vector field yields noisy velocity estimates, and integrating a noisy field at every control cycle looks exactly like jitter. 
 
-**Hypothesis 2 — compounding covariate shift.** Behavior cloning trains only on states that demonstrations visit. The first slightly wrong action moves the arm into a state the dataset never covered, the next prediction is less reliable there, and errors compound. Hesitant, oscillating motion is the textbook symptom: the policy is repeatedly pulled back toward demonstrated states and pushed off them again. 
+**Hypothesis 2 — compounding covariate shift.** Behavior cloning trains only on states that demonstrations visit. The first slightly wrong action moves the arm into a state the dataset never covered, the next prediction is less reliable there, and errors compound. The hesitant and oscillating motions we observed are consistent with this explanation, although they do not establish that covariate shift was the cause.
 
-These two hypotheses are complementary rather than competing. Longer training would sharpen the learned vector field, while broader state coverage would make the policy more robust to its own mistakes. Either factor alone may improve rollout success; together, they explain why a policy can fit demonstrations well offline yet still fail during closed-loop control.
+Both problems could be present at the same time. Longer training may improve the learned flow field, while broader state coverage may help the policy recover from its own errors. Additional experiments are needed to determine how much each factor contributed.
 
 
 ### Next steps
 
-Everything above ran on one RTX A6000 under a fixed 40,000-sample budget, and the headline closed-loop numbers are negative. We report the negative result with a short, testable hypothesis list. Each hypothesis implies a concrete follow-up experiment that we could carry out.
+These experiments used one RTX A6000 and a fixed budget of 40,000 training samples per policy. Closed-loop performance was poor, so the next experiments should test whether longer training or broader state coverage improves it.
 
-**Addressing undertraining.** The direct test is to pick one task and one policy size and extend training by one to two orders of magnitude, saving intermediate checkpoints throughout. Plotting validation MSE and rollout success against training steps would show whether the two improve together once optimization actually finishes, or whether offline accuracy saturates while control stays flat.
+**Addressing undertraining.** The direct test is to pick one task and one policy size and extend training by one to two orders of magnitude, saving intermediate checkpoints throughout. Evaluating intermediate checkpoints would show whether validation MSE and rollout success improve together with additional training, or whether better offline prediction still fails to improve control.
 
-**Addressing covariate shift.** The cheapest intervention is noise injection: perturbing demonstrated actions during training so the dataset contains slightly drifted states and the corrections that recover from them. A stronger intervention is [DAgger](https://arxiv.org/abs/1011.0686)-style relabeling in simulation, collecting corrections at the states our policies actually visit rather than only the states demonstrations happen to cover. Co-training a single policy across all three tasks at a matched budget would separately test the narrow-tuning concern: if broader data improves simulation result, we know the failure was caused by data distribution.
+**Addressing covariate shift.** One option is to inject noise into demonstrated trajectories and train on the resulting recovery behavior. A more involved option is [DAgger](https://arxiv.org/abs/1011.0686)-style relabeling in simulation, which would collect corrective actions from states visited by the learned policy. Co-training a single policy across all three tasks at a matched budget would separately test the narrow-tuning concern: if broader data improves simulation result, we know the failure was caused by data distribution.
 
 
 
@@ -369,7 +369,7 @@ Our second study used a cleaner boundary. We froze the same Foundry VLM and chan
 
 Both studies ended in negative results, and we believe documenting them honestly is the most useful contribution of this report. The LAPA experiment showed that replacing the multimodal backbone with Pythia changed more than model size: it also required the system to relearn how to interpret visual representations. In the Foundry study, increasing policy depth improved validation MSE, but this improvement did not translate into reliable rollout performance. With more time and compute, we would train for longer, run multiple seeds, evaluate on more episodes, and include more informative closed-loop control metrics.
 
-Based on these results, we do not conclude that a larger policy is always better. Instead, we argue that the better question is **under what representation, data, and evaluation regime additional policy capacity becomes the limiting factor**.
+These results are not enough to determine when a larger policy is useful. That comparison depends on the pretrained representation, the training data, and whether improvements in offline prediction lead to better closed-loop control.
 
 ### References
 
