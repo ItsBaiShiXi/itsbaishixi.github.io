@@ -46,7 +46,7 @@
   <meta itemprop="description" content="A study of language-backbone and action-policy capacity in modular vision-language-action models.">
   <meta itemprop="datePublished" content="2026-06-07T13:16:01-07:00">
   <meta itemprop="dateModified" content="2026-06-07T13:16:01-07:00">
-  <meta itemprop="wordCount" content="4446">
+  <meta itemprop="wordCount" content="4487">
 <meta name="referrer" content="no-referrer-when-downgrade" />
 
     
@@ -532,8 +532,8 @@
 <p>VLAs combine visual understanding, language conditioning, and robot control, but their capacity is distributed across several components. This makes &ldquo;how small can the model be?&rdquo; too broad to answer with a single parameter count.</p>
 <p>Our first study built a JAX-to-PyTorch export path and a frozen-LAPA adapter for interchangeable Pythia backbones. The adapters learned latent actions well above a uniform baseline, but the observed model-size differences were small and overfitting across saved epochs dominated. More importantly, replacing LAPA&rsquo;s multimodal backbone with text-pretrained Pythia removed the original visual prior, while the learned projection bridges mixed capacity with representation alignment.</p>
 <p>Our second study used a cleaner boundary. We froze the same Foundry VLM and changed only the depth of the action policy. Deeper policies consistently lowered held-out action MSE, but all tested sizes remained unreliable in closed-loop simulation.</p>
-<p>Both studies ended in negative results, and we believe documenting them honestly is the most useful contribution of this report. The LAPA experiment showed that replacing the multimodal backbone with Pythia changed more than model size: it also required the system to relearn how to interpret visual representations. In the Foundry study, increasing policy depth improved validation MSE, but this improvement did not translate into reliable rollout performance. With more time and compute, we would train for longer, run multiple seeds, evaluate on more episodes, and include more informative closed-loop control metrics.</p>
-<p>These results are not enough to determine when a larger policy is useful. That comparison depends on the pretrained representation, the training data, and whether improvements in offline prediction lead to better closed-loop control.</p>
+<p>Both studies ended in negative results, and we believe documenting them honestly is the most useful contribution of this report. The LAPA experiment showed that replacing the multimodal backbone with Pythia changed more than model size: it also required the system to relearn how to interpret visual representations. In the Foundry study, increasing policy depth improved validation MSE, but this improvement did not translate into reliable rollout performance. With more time and compute, we would train for longer, run multiple seeds, evaluate on more episodes, and include more informative closed-loop control metrics. Based on the results we have seen, we do not conclude that a larger policy is always better.</p>
+<p>From our experiments, we cannot conclude that a smaller policy can directly replace a larger one. However, our results suggest that policy size was not the main limitation in our experiments; training budget, data coverage, and pretrained representations mattered more. This leaves room to reduce policy size without substantially sacrificing performance, provided these other factors are addressed.</p>
 <h3 id="references">References</h3>
 <ol class="references">
   <li>Brohan et al. <a href="https://arxiv.org/abs/2307.15818">RT-2: Vision-Language-Action Models Transfer Web Knowledge to Robotic Control</a>. 2023.</li>

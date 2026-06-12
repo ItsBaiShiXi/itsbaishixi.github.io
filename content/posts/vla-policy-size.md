@@ -367,9 +367,9 @@ Our first study built a JAX-to-PyTorch export path and a frozen-LAPA adapter for
 
 Our second study used a cleaner boundary. We froze the same Foundry VLM and changed only the depth of the action policy. Deeper policies consistently lowered held-out action MSE, but all tested sizes remained unreliable in closed-loop simulation.
 
-Both studies ended in negative results, and we believe documenting them honestly is the most useful contribution of this report. The LAPA experiment showed that replacing the multimodal backbone with Pythia changed more than model size: it also required the system to relearn how to interpret visual representations. In the Foundry study, increasing policy depth improved validation MSE, but this improvement did not translate into reliable rollout performance. With more time and compute, we would train for longer, run multiple seeds, evaluate on more episodes, and include more informative closed-loop control metrics.
+Both studies ended in negative results, and we believe documenting them honestly is the most useful contribution of this report. The LAPA experiment showed that replacing the multimodal backbone with Pythia changed more than model size: it also required the system to relearn how to interpret visual representations. In the Foundry study, increasing policy depth improved validation MSE, but this improvement did not translate into reliable rollout performance. With more time and compute, we would train for longer, run multiple seeds, evaluate on more episodes, and include more informative closed-loop control metrics. Based on the results we have seen, we do not conclude that a larger policy is always better.
 
-These results are not enough to determine when a larger policy is useful. That comparison depends on the pretrained representation, the training data, and whether improvements in offline prediction lead to better closed-loop control.
+From our experiments, we cannot conclude that a smaller policy can directly replace a larger one. However, our results suggest that policy size was not the main limitation in our experiments; training budget, data coverage, and pretrained representations mattered more. This leaves room to reduce policy size without substantially sacrificing performance, provided these other factors are addressed.
 
 ### References
 
