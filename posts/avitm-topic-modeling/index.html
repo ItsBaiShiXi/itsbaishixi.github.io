@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Variational Autoencoders in Topic Modeling&nbsp;|&nbsp;BaiShiXi&#x27;s Blog</title>
+    <meta name="description" content="Reimplementing AVITM in PyTorch and checking its central claim: that a learned inference network can match classical topic-model inference while being far cheaper at test time." />
+    <link rel="canonical" href="https://baishixi.blog/posts/avitm-topic-modeling/" />
+    <meta property="og:url" content="https://baishixi.blog/posts/avitm-topic-modeling/" />
+    <meta property="og:site_name" content="BaiShiXi&#x27;s Blog" />
+    <meta property="og:title" content="Variational Autoencoders in Topic Modeling" />
+    <meta property="og:description" content="Reimplementing AVITM in PyTorch and checking its central claim: that a learned inference network can match classical topic-model inference while being far cheaper at test time." />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Variational Autoencoders in Topic Modeling" />
+    <meta name="twitter:description" content="Reimplementing AVITM in PyTorch and checking its central claim: that a learned inference network can match classical topic-model inference while being far cheaper at test time." />
+    <meta name="referrer" content="no-referrer-when-downgrade" />
+    <link href="/css/site.css" rel="stylesheet" />
+    <link href="/css/report.css" rel="stylesheet" />
+  </head>
+  <body>
+    <header>
+      <nav>
+        <a href="/">Home</a>
+        <a href="/posts/" class="current">Posts</a>
+        <a href="/projects/">Projects</a>
+      </nav>
+      <h1>Variational Autoencoders in Topic Modeling</h1>
+      <p>Reimplementing AVITM in PyTorch and checking its central claim: that a learned inference network can match classical topic-model inference while being far cheaper at test time.</p>
+    </header>
+    <main>
+      <div class="report-meta">
+        <p class="report-kicker">CS274B Final Report</p>
+        <p class="report-byline">
+          <span>Shengzhe Zhang and Chandler Prasetyo</span>
+          <span aria-hidden="true">/</span>
+          <time datetime="2026-06-11">June 2026</time>
+        </p>
+      </div>
+
+      <div class="report-layout">
+        <aside class="report-toc" aria-label="Table of contents">
+          <p class="toc-label">On this page</p>
+          <nav id="TableOfContents">
+<ul>
+<li><a href="#what-makes-avitm-work">What makes AVITM work</a>
+</li>
+<li><a href="#what-we-built">What we built</a>
+</li>
+<li><a href="#experiments">Experiments</a>
+</li>
+<li><a href="#conclusions">Conclusions</a>
+</li>
+<li><a href="#references">References</a>
+</li>
+</ul>
+</nav>
+        </aside>
+
+        <article class="report-article">
+<p>Topic models sort a pile of documents into themes nobody labelled in advance, which is why they
+end up underneath literature reviews, content curation and customer-feedback analysis. Latent
+Dirichlet Allocation is still the standard: every document is a mixture of topics, every topic a
+distribution over words.</p>
+<p>The awkward part is not the model, it is the inference. Recovering the latent topic distribution
+θ that produced a document is its own optimization problem, and classical approaches — mean-field
+variational inference, collapsed Gibbs sampling — solve it well but pay for it twice. They re-run
+from scratch for every new document, and changing the model at all means deriving a new inference
+procedure by hand.</p>
+<blockquote>
+<p>If an inference network can be <em>learned</em> once and then simply run forward, what do you give up
+in topic quality to get that?</p>
+</blockquote>
+<p>Srivastava &amp; Sutton's <a href="https://arxiv.org/abs/1703.01488">AVITM</a> (ICLR 2017) answers by putting a
+variational autoencoder where the inference procedure used to be. We reimplemented it in PyTorch
+and checked whether the claim survives contact with someone else's code.</p>
+<h2 id="what-makes-avitm-work">What makes AVITM work</h2>
+<p>Two contributions do the heavy lifting, and both exist to defeat a specific failure.</p>
+<p><strong>A Laplace approximation to the Dirichlet prior.</strong> The reparameterization trick — the thing that
+lets gradients flow through a sampling step — needs a distribution you can express as a
+deterministic function of noise. A Dirichlet is not that. So the prior is approximated by a
+Gaussian in softmax space, which <em>is</em> reparameterizable, and the whole network becomes trainable
+end to end.</p>
+<p><strong>Batch normalization and high-momentum training.</strong> Without them the model collapses: topics
+degenerate into near-identical lists of common words. This is a known pathology of the Dirichlet
+prior, and it is not a subtle effect — you can read it straight off the topic lists.</p>
+<p>The paper also introduces <strong>ProdLDA</strong>, which replaces LDA's mixture of topics with a product of
+experts. It exists mainly to make a point: swapping the model required no new inference
+derivation, which is the entire argument for learning the inference network.</p>
+<figure class="report-figure">
+  <img src="/images/avitm/LDAandAVITM.png" alt="Side-by-side comparison: on the left the LDA plate diagram with its document, topic and word variables; on the right an overview of AVITM as an encoder-decoder network" loading="lazy" />
+  <figcaption>Left: the LDA plate diagram. Right: AVITM, where the inference procedure is replaced by a trained encoder.</figcaption>
+</figure>
+<h2 id="what-we-built">What we built</h2>
+<p>Four models, all on 20 Newsgroups with a vocabulary of 2,000 words and topic counts
+K ∈ {50, 200}, sharing the same training data and evaluation code. The two AVITM variants share
+an encoder and training loop and differ only in the decoder.</p>
+<p><strong>DMFVI</strong> — scikit-learn's <code>LatentDirichletAllocation</code> with <code>learning_offset = 50</code> and
+<code>learning_decay = 0.7</code>, the standard online-LDA settings. The paper trained until it matched
+perplexities from prior work without naming hyperparameters; we capped iterations at 200 for time
+and compute, since this baseline was not the thing under test.</p>
+<p><strong>Collapsed Gibbs sampling</strong> — a transformation layer over the bag-of-words input, then a training
+loop that integrates out θ and φ so the MCMC sampler runs only over word-topic assignments z. We
+capped it at 20 iterations, which was enough on a corpus this size.</p>
+<p><strong>AVITM on LDA</strong> and <strong>AVITM on ProdLDA</strong> — the encoder maps a bag-of-words document to a Gaussian
+over topics; the reparameterization trick draws <code>z = μ + σ·ε</code> with ε from a standard normal, so
+the sampling step stays differentiable; a softmax turns z into the topic vector θ; the decoder
+reconstructs the bag of words from it. The loss combines reconstruction error against the original
+document with the KL divergence between the encoder's output and the prior — the latter handled by
+the Laplace approximation, which is what makes the two comparable at all.</p>
+<p>We measured two things: <strong>perplexity</strong> for predictive quality, and <strong>NPMI</strong> for topic coherence —
+whether the words in a topic actually belong together.</p>
+<h2 id="experiments">Experiments</h2>
+<p>The order mattered more than we expected. We ran it in four stages: prepare and inspect the data
+(80/20 split), establish both classical baselines, train the AVITM variants, then compare.</p>
+<p>Building the baselines first was what made the rest interpretable. Our Gibbs coherence came out
+slightly <em>better</em> than the paper's, which initially looked like a mistake. The likely explanation
+is preprocessing: the paper used a modified 20 Newsgroups with an unspecified cleaning step, so
+our bag-of-words probably carried less noise. Same story for the DMFVI coherence. Knowing that up
+front meant we could read later differences as real rather than as artifacts of our pipeline.</p>
+<figure class="report-figure">
+  <img src="/images/avitm/result50.png" alt="Bar charts comparing perplexity and NPMI coherence between our reimplementation and the original paper&#x27;s reported results, at 50 topics, across DMFVI, Gibbs, AVITM-LDA and AVITM-ProdLDA" loading="lazy" />
+  <figcaption>Perplexity and coherence, ours against the original paper, at K = 50 topics.</figcaption>
+</figure>
+<figure class="report-figure">
+  <img src="/images/avitm/result200.png" alt="The same perplexity and NPMI coherence comparison at 200 topics" loading="lazy" />
+  <figcaption>The same comparison at K = 200 topics.</figcaption>
+</figure>
+<p>The qualitative output is more revealing than either metric. Sampling topics from each model:</p>
+<p><strong>AVITM on ProdLDA</strong></p>
+<pre><code class="language-text">Topic 47: stage, rocket, station, spacecraft, dept, development, vehicle, flight, satellite
+Topic 48: scheme, produce, experts, nsa, agencies, messages, details, random, cryptography
+Topic 14: militia, bear, amendment, providing, firearm, license, cities, organized, dangerous
+</code></pre>
+<p><strong>AVITM on LDA</strong></p>
+<pre><code class="language-text">Topic  1: like, just, don, use, know, does, good, new, time, think
+Topic  2: just, like, don, know, time, think, good, new, use, does
+Topic  4: like, just, don, know, use, new, good, time, think, does
+</code></pre>
+<p><strong>Collapsed Gibbs</strong></p>
+<pre><code class="language-text">Topic  7: team, league, hockey, players, win, teams, nhl, detroit, season, division
+Topic 12: key, chip, keys, bit, des, number, clipper, used, algorithm, chips
+Topic 21: armenian, armenians, turkish, people, turkey, greek, killed, armenia, turks, said
+</code></pre>
+<p>Those three AVITM-on-LDA topics are the same topic wearing different hats — the component
+collapse the paper warns about, reproduced faithfully and unintentionally. The words are the
+corpus's most common tokens in slightly different orders, which is what a collapsed model outputs
+when it has stopped distinguishing anything. More learning-rate tuning and momentum adjustment on
+the Adam optimizer would likely have pulled it apart. ProdLDA, on the same encoder, produced
+topics that are recognizably about spaceflight, cryptography policy and gun law.</p>
+<h2 id="conclusions">Conclusions</h2>
+<p>The central claim reproduces: under this inference pipeline ProdLDA beat AVITM-LDA on both
+coherence and perplexity at K = 50, consistent with the original paper.</p>
+<p>But the honest reading of our numbers is more qualified than &quot;the neural method wins&quot;. On a corpus
+this small, the classical methods — Gibbs especially — remain strong on the raw metrics, and AVITM
+on LDA came out slightly worse on average, with real headroom left in tuning. What does not show
+up in a coherence score is the cost: even on a small corpus Gibbs was visibly slowing down, and
+classical inference has to pay that cost again for every new document. The implementation reaches
+0.2323 NPMI in roughly 16 seconds of training against two to five minutes for the baselines — a
+10–17× speedup at competitive quality.</p>
+<p>So the result is not that learned inference produces better topics. It is that it produces
+comparable topics while being amortized and adaptable — you train the encoder once, and switching
+from LDA to ProdLDA cost us a decoder change instead of a derivation.</p>
+<p>Where we would take it next: larger corpora, where the scalability argument should actually start
+to bite; more LDA baselines; and a richer evaluation of topic-word distributions, possibly with an
+LLM in the loop, since NPMI is a thin proxy for whether a topic means anything to a reader.</p>
+<h2 id="references">References</h2>
+<ol>
+<li>D. M. Blei, A. Y. Ng, M. I. Jordan. <em>Latent Dirichlet Allocation.</em> Journal of Machine Learning
+Research, 3:993–1022, 2003.</li>
+<li>Y. Miao, L. Yu, P. Blunsom. <em>Neural Variational Inference for Text Processing.</em> ICML, 2016.</li>
+<li>D. P. Kingma, M. Welling. <em>Auto-Encoding Variational Bayes.</em> ICLR, 2014.</li>
+<li>A. Srivastava, C. Sutton. <em>Autoencoding Variational Inference For Topic Models.</em> ICLR, 2017.</li>
+<li>M. D. Hoffman, D. M. Blei, F. Bach. <em>Online Learning for Latent Dirichlet Allocation.</em> NeurIPS
+vol. 23, 2010.</li>
+</ol>
+<p><a href="https://github.com/ItsBaiShiXi/Pytorch_Implementation_AVITM">Source on GitHub</a></p>
+
+        </article>
+      </div>
+    </main>
+    <footer>
+      <span>&copy; 2026 Shengzhe Zhang</span>
+    </footer>
+  </body>
+</html>

@@ -28,7 +28,7 @@ import shutil
 import sys
 import tempfile
 import tomllib
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 try:
@@ -53,7 +53,6 @@ NAV = [
     ("/", "Home"),
     ("/posts/", "Posts"),
     ("/projects/", "Projects"),
-    ("/now/", "Now"),
 ]
 
 
@@ -244,9 +243,12 @@ def chrome_open(heading: str, current: str, subtitle: str = "") -> str:
     <main>"""
 
 
-CHROME_CLOSE = """    </main>
+# The year is computed at build time, so the footer stops being wrong every
+# January. Note the side effect: on 1 Jan, `build.py --check` will report every
+# page out of date until you rebuild and commit.
+CHROME_CLOSE = f"""    </main>
     <footer>
-      <span>&copy; 2026 Shengzhe Zhang</span>
+      <span>&copy; {datetime.now().year} Shengzhe Zhang</span>
     </footer>
   </body>
 </html>
@@ -254,11 +256,20 @@ CHROME_CLOSE = """    </main>
 
 
 def report_body(page: dict, body: str, toc_html: str) -> str:
-    authors = " and ".join(page.get("authors", []))
+    # `course` is optional: without it the kicker must not render a leading space.
+    course = page.get("course", "").strip()
+    kicker = html.escape(f"{course} Final Report" if course else "Final Report")
+
+    # "A", "A and B", "A, B and C" -- a plain " and ".join breaks past two authors.
+    names = page.get("authors", [])
+    if len(names) > 2:
+        authors = ", ".join(names[:-1]) + " and " + names[-1]
+    else:
+        authors = " and ".join(names)
     date = page["date"]
     return f"""
       <div class="report-meta">
-        <p class="report-kicker">{html.escape(page.get("course", ""))} Final Report</p>
+        <p class="report-kicker">{kicker}</p>
         <p class="report-byline">
           <span>{html.escape(authors)}</span>
           <span aria-hidden="true">/</span>
@@ -289,8 +300,18 @@ def parse(path: Path) -> dict:
     meta = tomllib.loads(m.group(1))
     meta["_body"] = m.group(2)
     meta["_slug"] = path.stem
-    if isinstance(meta.get("date"), str):
-        meta["date"] = datetime.fromisoformat(meta["date"])
+    # Normalise dates to a naive datetime. TOML yields a `date` for `2025-12-12`
+    # but a tz-aware `datetime` for `2026-06-07T13:16:01-07:00`, and those three
+    # types cannot be sorted against each other. Only Y-M-D is ever rendered, so
+    # dropping the time zone loses nothing.
+    d = meta.get("date")
+    if isinstance(d, str):
+        d = datetime.fromisoformat(d)
+    if isinstance(d, datetime):
+        d = d.replace(tzinfo=None)
+    elif isinstance(d, date):
+        d = datetime(d.year, d.month, d.day)
+    meta["date"] = d
     return meta
 
 

@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Distributed System for FPS Game&nbsp;|&nbsp;BaiShiXi&#x27;s Blog</title>
+    <meta name="description" content="Client-side prediction, interpolation and server reconciliation in a multiplayer FPS, and what happens to accuracy and smoothness when the network gets worse." />
+    <link rel="canonical" href="https://baishixi.blog/posts/fps-distributed-system/" />
+    <meta property="og:url" content="https://baishixi.blog/posts/fps-distributed-system/" />
+    <meta property="og:site_name" content="BaiShiXi&#x27;s Blog" />
+    <meta property="og:title" content="Distributed System for FPS Game" />
+    <meta property="og:description" content="Client-side prediction, interpolation and server reconciliation in a multiplayer FPS, and what happens to accuracy and smoothness when the network gets worse." />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Distributed System for FPS Game" />
+    <meta name="twitter:description" content="Client-side prediction, interpolation and server reconciliation in a multiplayer FPS, and what happens to accuracy and smoothness when the network gets worse." />
+    <meta name="referrer" content="no-referrer-when-downgrade" />
+    <link href="/css/site.css" rel="stylesheet" />
+    <link href="/css/report.css" rel="stylesheet" />
+  </head>
+  <body>
+    <header>
+      <nav>
+        <a href="/">Home</a>
+        <a href="/posts/" class="current">Posts</a>
+        <a href="/projects/">Projects</a>
+      </nav>
+      <h1>Distributed System for FPS Game</h1>
+      <p>Client-side prediction, interpolation and server reconciliation in a multiplayer FPS, and what happens to accuracy and smoothness when the network gets worse.</p>
+    </header>
+    <main>
+      <div class="report-meta">
+        <p class="report-kicker">CS230 Final Report</p>
+        <p class="report-byline">
+          <span>Shengzhe Zhang, Chandler Prasetyo and Shu Sekigawa</span>
+          <span aria-hidden="true">/</span>
+          <time datetime="2025-12-12">December 2025</time>
+        </p>
+      </div>
+
+      <div class="report-layout">
+        <aside class="report-toc" aria-label="Table of contents">
+          <p class="toc-label">On this page</p>
+          <nav id="TableOfContents">
+<ul>
+<li><a href="#approach">Approach</a>
+<ul>
+<li><a href="#server-authority-and-snapshots">Server authority and snapshots</a>
+</li>
+<li><a href="#prediction-and-reconciliation">Prediction and reconciliation</a>
+</li>
+<li><a href="#interpolation">Interpolation</a>
+</li>
+<li><a href="#server-side-hit-detection">Server-side hit detection</a>
+</li>
+</ul></li>
+<li><a href="#protocols">Protocols</a>
+</li>
+<li><a href="#evaluation">Evaluation</a>
+<ul>
+<li><a href="#setup">Setup</a>
+</li>
+<li><a href="#accuracy">Accuracy</a>
+</li>
+<li><a href="#protocols-1">Protocols</a>
+</li>
+<li><a href="#smoothness">Smoothness</a>
+</li>
+</ul></li>
+<li><a href="#what-we-took-away">What we took away</a>
+</li>
+</ul>
+</nav>
+        </aside>
+
+        <article class="report-article">
+<p>Real-time multiplayer games have to keep clients in agreement over a network that offers no
+guarantees. Latency delays input, jitter makes motion stutter, and packet loss puts players in
+places they never went. The usual answers are well known — an authoritative server, client-side
+prediction, interpolation — but knowing the techniques is not the same as knowing what each one
+buys you, or what it costs.</p>
+<p>We built a multiplayer first-person shooter on the <a href="https://www.ursinaengine.org/">Ursina</a>
+engine to measure exactly that. Alongside the synchronization work, we compared two transports:
+<strong>WebSocket</strong>, which rides on TCP and guarantees ordered delivery, and <strong>UDP</strong>, which is faster
+and lossier and needs its own machinery to cope.</p>
+<blockquote>
+<p>When every mechanism costs something, which ones actually earn their keep as the network
+degrades?</p>
+</blockquote>
+<p>We answer it with two numbers: how far the player ends up from where they should be, and how
+jerky the motion looks getting there.</p>
+<h2 id="approach">Approach</h2>
+<h3 id="server-authority-and-snapshots">Server authority and snapshots</h3>
+<p>The prototype is server-authoritative on a fixed <strong>20 Hz</strong> tick. Clients send <em>inputs</em>, never
+state. Each tick the server applies the inputs it has received, advances the simulation, and
+produces a snapshot of the authoritative world — entity positions, velocities, bullets,
+obstacles — which it sends to every connected client.</p>
+<p>Sending inputs rather than state is what makes the rest possible. The server stays the single
+source of truth, runs deterministically, and can validate everything; clients are left to worry
+only about presenting it smoothly.</p>
+<h3 id="prediction-and-reconciliation">Prediction and reconciliation</h3>
+<p>Waiting for a round trip before the player sees their own movement feels terrible, so the client
+predicts. When an input is generated it is applied locally <em>immediately</em>, and also sent to the
+server tagged with a sequence number.</p>
+<p>When the authoritative snapshot arrives, the client compares it against what it predicted. If
+they disagree, it rolls its state back to the server's version and replays every input the
+server had not yet acknowledged. This rollback-and-replay keeps the client eventually consistent
+with the server without ever making the player wait for the network. Corrections are
+occasionally visible, and that visibility turns out to matter for smoothness later.</p>
+<h3 id="interpolation">Interpolation</h3>
+<p>Snapshots do not arrive on a tidy schedule. Rather than rendering the newest one the moment it
+lands, the client deliberately renders <strong>about 100 ms in the past</strong>, interpolating between the
+two snapshots that bracket the render time.</p>
+<p>This buys a buffer: late snapshots have a window to arrive before they are needed, so entities
+glide instead of teleporting. The cost is a fixed, controlled visual delay — trading a little
+latency for a lot of stability.</p>
+<h3 id="server-side-hit-detection">Server-side hit detection</h3>
+<p>All hit resolution happens on the server. Clients may play a muzzle flash optimistically, but
+they do not decide whether anything was hit. The server checks bullet trajectories against the
+authoritative state at the right tick and applies damage itself, so a client cannot manufacture
+hits or exploit its own latency.</p>
+<h2 id="protocols">Protocols</h2>
+<p>Both transports carry the same three message types — connection, input, and snapshot.</p>
+<p>Over <strong>WebSocket</strong>, the client opens an HTTP connection on port 8000, the server answers
+<code>101 Switching Protocols</code>, and everything afterwards is JSON over a reliable ordered channel.
+The connection-completion message also hands the client a UDP endpoint, so the session can
+switch transports — with WebSocket remaining as a fallback on networks where UDP is blocked by
+NAT or defeated by a small MTU.</p>
+<p>Over <strong>UDP</strong> there is no channel and no delivery guarantee, so the payloads are hand-packed
+binary. Every message opens with a common header giving version, message type, and payload
+length.</p>
+<figure class="report-figure">
+  <img src="/images/fps/UDP_Input_diagram.png" alt="Byte-level layout of the UDP input payload: a common header, player ID, input count, then a sequence of fixed-width input structures containing sequence number, timestamp, movement vector, look direction and flags" loading="lazy" />
+  <figcaption>UDP input payload structure. Each input carries a sequence number, an f64 client timestamp, movement and look vectors as f32 triples, and a flags byte — all fixed-width and big-endian, so the server can parse without ambiguity.</figcaption>
+</figure>
+<p>Input messages can carry <strong>several past inputs</strong>, not just the current one, so that a single
+packet arriving after a gap can restore the history the server missed. Because UDP has no
+built-in acknowledgement, the client confirms delivery with an ACK carrying the last sequence
+number received plus a 64-bit <strong>arrival mask</strong> — a sliding window where each bit marks whether
+one earlier packet arrived. If sequence 10 is current and 8 and 9 are missing, the mask reads
+<code>...111001</code>.</p>
+<p>Snapshots are larger and need care. With a 1500-byte MTU only 1472 bytes fit in a packet, and a
+snapshot holds every player and every bullet, so it is fragmented at the application layer.</p>
+<figure class="report-figure">
+  <img src="/images/fps/UDP_Snapshot_diagram.png" alt="Byte-level layout of the UDP snapshot payload: tick number, server timestamp, player and bullet counts, the recipient&#x27;s own 38-byte state, then variable numbers of other-player and bullet states" loading="lazy" />
+  <figcaption>UDP snapshot payload structure. The recipient's own 38-byte state is mandatory and always travels in the first packet; other players and bullets are optional and may be split across packets.</figcaption>
+</figure>
+<p>Two details make fragmentation survivable. A client's <strong>own</strong> state is mandatory and always
+rides in the first packet — and is sent redundantly — so self-position stays accurate even when
+other data is lost. And every entity has a timeout, so a player whose state is missing from a
+snapshot holds position briefly instead of flickering out of existence.</p>
+<h2 id="evaluation">Evaluation</h2>
+<h3 id="setup">Setup</h3>
+<p>We needed repeatable network conditions, so we emulated them rather than hunting for bad
+networks. Client and server run on the same physical Windows host to keep everything outside the
+emulator negligible — end-to-end delay without emulation averages <strong>0.3 ms</strong>. The server runs in
+a Docker container on Ubuntu under WSL, where the Linux kernel's packet scheduler is available,
+and <code>tc</code> applies ingress and egress delay and loss on the container's interface.</p>
+<figure class="report-figure">
+  <img src="/images/fps/Evaluation_setup.png" alt="Diagram of the experiment setup: a game client on the Windows host, mirrored networking into WSL, the kernel packet scheduler, and the game server in a Docker container with tc controlling delay and loss" loading="lazy" />
+  <figcaption>Experiment setup. Mirrored networking forwards loopback traffic into the WSL guest, iptables routes it to the container's virtual interface, and tc shapes ingress and egress delay and loss rate.</figcaption>
+</figure>
+<p>To keep runs comparable, players were driven by a script rather than a human: pattern (a) moves
+in a straight line for 10 seconds, pattern (b) traces a square by cycling W→D→S→A at one-second
+intervals. The client renders at a vsync-locked 144 Hz, well above both the server tick and the
+input rate, and every metric is sampled per rendered frame — so rendering hitches show up in the
+results too, which is the honest way to measure something a player actually sees.</p>
+<h3 id="accuracy">Accuracy</h3>
+<p>Accuracy is the Euclidean distance between the position the server reports and the position the
+client would have computed locally from the same inputs:</p>
+<pre><code class="language-text">Error = sqrt( (x_actual - x_ideal)² + (y_actual - y_ideal)² + (z_actual - z_ideal)² )
+</code></pre>
+<p>Server-side collision was disabled for these runs so players always move exactly as their inputs
+dictate, isolating the synchronization behaviour from the physics.</p>
+<figure class="report-figure">
+  <img src="/images/fps/position_error_avg_feature_vs_delay.png" alt="Line chart of average position error against network delay from 0 to 400 ms, comparing four configurations; the two using prediction stay flat and low while the other two rise linearly" loading="lazy" />
+  <figcaption>Average position error against network delay. The two configurations that predict stay flat as latency climbs; those without prediction, or with prediction but no reconciliation, degrade linearly.</figcaption>
+</figure>
+<p>This is the clearest result in the project. <strong>Prediction is what keeps error flat as latency
+rises</strong>; without it, error grows linearly with RTT, because the player is simply waiting for
+snapshots that arrive later and later.</p>
+<p>There is a counterintuitive wrinkle: some configurations <em>without</em> self-position interpolation
+scored slightly better here. That is a measurement artifact with a real cause — interpolating
+your own position introduces up to one input tick of delay, since the client eases toward the
+target across several frames rather than snapping to it. Against a metric defined as &quot;distance
+from the instantaneous ideal&quot;, easing looks like error. It also looks considerably better in
+motion, which is what the smoothness section measures.</p>
+<figure class="report-figure">
+  <img src="/images/fps/position_errors_plot_200_0.png" alt="Position error plotted against frame number at 200 ms RTT, showing a sawtooth for the no-prediction case that resets each time a snapshot arrives" loading="lazy" />
+  <figcaption>Position error over time at 200 ms RTT. Without prediction the error climbs between snapshots and drops each time one lands — the sawtooth is the player being repeatedly dragged back into place.</figcaption>
+</figure>
+<p>Watching it frame by frame shows the mechanism: error ramps up between snapshots and collapses
+when one arrives, over and over. Once input stops, everything converges — the error is a
+property of motion, not of position.</p>
+<figure class="report-figure">
+  <img src="/images/fps/position_error_avg_feature_vs_loss.png" alt="Average position error against packet loss rate from 0 to 10 percent; all configurations fluctuate between roughly 0.3 and 1 with no clear trend" loading="lazy" />
+  <figcaption>Average position error against packet loss. Error fluctuates between roughly 0.3 and 1 with no correlation to loss rate — the aggregate hides what is actually happening.</figcaption>
+</figure>
+<p>Against packet loss the averages say almost nothing: everything sits between 0.3 and 1 with no
+trend. The time series explains why the average is the wrong summary.</p>
+<figure class="report-figure">
+  <img src="/images/fps/position_errors_plot_0_10_feature.png" alt="Position error over frame number at 10 percent packet loss; the configuration without prediction diverges steadily and never recovers, while the three using prediction stay bounded" loading="lazy" />
+  <figcaption>Position error over time at 10% packet loss. Without prediction, lost inputs accumulate into a drift that never recovers — the player is simply slower than they should be.</figcaption>
+</figure>
+<p>Without prediction, each lost input is movement that never happens, so the player falls
+progressively behind and the error never comes back — it is still wrong after the movement ends.
+With prediction, loss stays bounded.</p>
+<h3 id="protocols-1">Protocols</h3>
+<figure class="report-figure">
+  <img src="/images/fps/position_error_avg_protocol_vs_delay.png" alt="Average position error against delay for WebSocket, redundant UDP and plain UDP, with and without prediction; without prediction all three rise together, with prediction all stay low" loading="lazy" />
+  <figcaption>Average position error against delay, by protocol. Without prediction the protocols are indistinguishable and all degrade; with prediction they all stay low. The transport matters far less than the client-side mechanisms.</figcaption>
+</figure>
+<figure class="report-figure">
+  <img src="/images/fps/position_error_avg_protocol_vs_loss.png" alt="Average position error against packet loss for the three protocols; plain UDP with prediction performs best, and redundant UDP is slightly worse than plain UDP" loading="lazy" />
+  <figcaption>Average position error against packet loss, by protocol. Plain UDP with prediction generally beat WebSocket — and also beat our own redundant-input variant.</figcaption>
+</figure>
+<p>Here is the result we least expected. <strong>The redundant input history made things slightly
+worse.</strong> Plain UDP outperformed both WebSocket and the variant carrying two inputs per packet.</p>
+<p>The cause is a design flaw rather than a measurement error. Any input whose sequence number is
+older than the last tick the server already processed gets discarded, even if it is sitting in
+the queue — so only the <em>first</em> packet to arrive after a loss can contribute recovered history.
+Everything after that is redundant in the useless sense. The mechanism pays its bandwidth cost
+on every packet and collects on almost none of them.</p>
+<h3 id="smoothness">Smoothness</h3>
+<p>Accuracy says where the player ended up; it says nothing about whether getting there looked
+right. For that we take acceleration per frame and measure how much it changes frame to frame:</p>
+<pre><code class="language-text">Accel_t          = ((P_t - P_t-Δt)/Δt - (P_t-Δt - P_t-2Δt)/Δt) / Δt
+Loss of Smoothness = | Accel_t - Accel_t-Δt |
+</code></pre>
+<p>Purely local movement — no network at all — scores around <strong>20</strong>. That is the target.</p>
+<figure class="report-figure">
+  <img src="/images/fps/actual_smoothness_avg_feature_vs_delay.png" alt="Average loss of smoothness against network delay for four configurations; the full stack stays low and flat while the others are several times worse" loading="lazy" />
+  <figcaption>Loss of smoothness against delay. Only the full combination — prediction, reconciliation and interpolation — stays low, and it stays low regardless of latency.</figcaption>
+</figure>
+<p>Only the complete stack produces smooth motion, and it does so at every latency we tested. The
+ordering in between is instructive: <strong>prediction alone is worse than no prediction at all.</strong>
+Without prediction the position updates once per snapshot, so there is one acceleration jump per
+tick. With prediction but no interpolation there are two update sources — the input tick and the
+arriving snapshot — and reconciliation snaps the position instantly when they disagree. More
+correctness, more visible discontinuities.</p>
+<figure class="report-figure">
+  <img src="/images/fps/actual_smoothness_avg_feature_vs_loss.png" alt="Average loss of smoothness against packet loss for four configurations, showing the same ordering as the delay chart across all loss rates" loading="lazy" />
+  <figcaption>Loss of smoothness against packet loss. The same ordering holds at every loss rate: smooth motion requires prediction and correction together.</figcaption>
+</figure>
+<figure class="report-figure">
+  <img src="/images/fps/actual_smoothness_avg_protocol_vs_delay.png" alt="Average loss of smoothness against delay for the three protocols, showing negligible differences between them" loading="lazy" />
+  <figcaption>Loss of smoothness against delay, by protocol. Transport choice is essentially irrelevant to smoothness.</figcaption>
+</figure>
+<figure class="report-figure">
+  <img src="/images/fps/actual_smoothness_avg_protocol_vs_loss.png" alt="Average loss of smoothness against packet loss for the three protocols, again showing negligible differences" loading="lazy" />
+  <figcaption>Loss of smoothness against packet loss, by protocol. Again, only the presence or absence of prediction and interpolation moves the needle.</figcaption>
+</figure>
+<p>Protocol choice barely registers. Smoothness is decided entirely by the client-side mechanisms.</p>
+<p>And even at its best, the full stack stays well short of the local baseline. Our interpolation is
+linear: it smooths <em>position</em> without any attempt to keep <em>acceleration</em> continuous, and the
+metric is a second derivative. Fixing that means a higher-order scheme — spline interpolation, or
+explicit predictive smoothing.</p>
+<h2 id="what-we-took-away">What we took away</h2>
+<p>Three things, in rough order of how much they surprised us.</p>
+<p><strong>Prediction is the load-bearing mechanism.</strong> It is what decouples perceived responsiveness from
+RTT, and it holds error flat across every latency and loss rate we tested. Nothing else in the
+stack comes close in impact.</p>
+<p><strong>Half a solution can be worse than none.</strong> Prediction without interpolation measurably degrades
+smoothness relative to no prediction at all, because it adds a second source of position updates
+and lets reconciliation snap the player around. These mechanisms are a set, not a menu.</p>
+<p><strong>Our redundancy scheme did not work.</strong> It was a reasonable idea implemented in a way that could
+only ever help on the first packet after a loss, and the data shows it — slightly worse than
+plain UDP, for strictly more bandwidth. The fix is to let the server accept recovered inputs
+further back than the last processed tick, which is a change to the queueing rule rather than to
+the packet format.</p>
+<p>The broader point is that responsiveness, accuracy and smoothness genuinely trade against each
+other, and the right balance depends on the network you are actually on. That argues for adaptive
+synchronization — varying the interpolation delay or the tick rate with measured conditions —
+rather than the fixed constants we used throughout.</p>
+<p>Left for future work: higher-order interpolation, better input recovery under heavy loss,
+scalability in server architecture and player count, and fault tolerance on both ends.</p>
+<p><a href="https://github.com/shugonta/CS230-FPS-Project">Source on GitHub</a></p>
+
+        </article>
+      </div>
+    </main>
+    <footer>
+      <span>&copy; 2026 Shengzhe Zhang</span>
+    </footer>
+  </body>
+</html>

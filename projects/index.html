@@ -4,15 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Projects&nbsp;|&nbsp;BaiShiXi&#x27;s Blog</title>
-    <meta name="description" content="Research and projects by Shengzhe Zhang, in robotics and machine learning." />
+    <meta name="description" content="Research and projects by Shengzhe Zhang — robotics, machine learning, distributed systems, and web applications." />
     <link rel="canonical" href="https://baishixi.blog/projects/" />
     <meta property="og:url" content="https://baishixi.blog/projects/" />
     <meta property="og:site_name" content="BaiShiXi&#x27;s Blog" />
     <meta property="og:title" content="Projects" />
-    <meta property="og:description" content="Research and projects by Shengzhe Zhang, in robotics and machine learning." />
+    <meta property="og:description" content="Research and projects by Shengzhe Zhang — robotics, machine learning, distributed systems, and web applications." />
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="Projects" />
-    <meta name="twitter:description" content="Research and projects by Shengzhe Zhang, in robotics and machine learning." />
+    <meta name="twitter:description" content="Research and projects by Shengzhe Zhang — robotics, machine learning, distributed systems, and web applications." />
     <meta name="referrer" content="no-referrer-when-downgrade" />
     <link href="/css/pages.css" rel="stylesheet" />
   </head>
@@ -22,14 +22,33 @@
         <a href="/">Home</a>
         <a href="/posts/">Posts</a>
         <a href="/projects/" class="current">Projects</a>
-        <a href="/now/">Now</a>
       </nav>
       <h1>Projects</h1>
       <p>What I&#x27;m working on. Rough reverse-chronological order.</p>
     </header>
     <main>      <article class="prose">
+<h2 id="reimplementing-avitm">Reimplementing AVITM</h2>
+<p><em>CS274B project at UC Irvine, with Chandler Prasetyo.</em></p>
+<p>A from-scratch PyTorch implementation of
+<a href="https://arxiv.org/abs/1703.01488">Autoencoding Variational Inference for Topic Models</a>
+(Srivastava &amp; Sutton, ICLR 2017), testing its central claim: that a VAE-style inference network
+can match classical topic-model inference on topic quality while being far cheaper at test time.</p>
+<p>Classical inference is the thing to beat. Mean-field variational inference and collapsed Gibbs
+sampling both work well, but they re-run optimization from scratch for every new document, and
+changing the model means deriving a new inference procedure by hand. An inference <em>network</em>
+learns the mapping once and then just runs forward.</p>
+<p>Reproducing it turned out to be mostly a fight with the Dirichlet prior. A Dirichlet isn't
+directly reparameterizable, so the paper's Laplace approximation stands in for it; and the model
+readily collapses — topics degenerating into near-identical lists of common words — without batch
+normalization, high-momentum training, KL annealing and careful prior-variance calibration. Those
+details are the reproduction.</p>
+<p>On 20 Newsgroups the result held: ProdLDA under this inference pipeline reached 0.2323 NPMI
+coherence in about 16 seconds of training, against two to five minutes for the classical
+baselines — a 10–17× speedup at competitive topic quality.</p>
+<p><a href="/posts/avitm-topic-modeling/">Read the write-up →</a> ·
+<a href="https://github.com/ItsBaiShiXi/Pytorch_Implementation_AVITM">Source</a></p>
 <h2 id="how-much-policy-does-a-vla-need">How Much Policy Does a VLA Need?</h2>
-<p><em>CS295 final report, with Eric and Sean.</em></p>
+<p><em>CS295 final report, with Eric.</em></p>
 <p>How much parameter capacity does a vision-language-action model actually need in its action
 policy head? Two stages: first replacing LAPA's 7B LLaMA-2 backbone with smaller Pythia models
 behind a frozen interface, then isolating policy capacity directly by freezing FoundryVLA's
@@ -38,6 +57,48 @@ layers (77M / 205M / 410M).</p>
 <p>Deeper heads predicted held-out actions better on all three tasks, but none produced reliable
 closed-loop control. The gap between those two facts is the interesting part.</p>
 <p><a href="/posts/vla-policy-size/">Read the report →</a></p>
+<h2 id="human-like-fox-v-fox-bots-for-melee">Human-Like Fox v Fox Bots for Melee</h2>
+<p><em>CS274C project at UC Irvine, with Chandler Prasetyo, Ayan Jhunjhunwala, Jaiveer Gahunia and
+Sohum Gulla Pulijal.</em></p>
+<p>Super Smash Bros. Melee's built-in CPUs are scripted and useless as practice, while learned bots
+are the opposite problem — they react in under 40 ms against a human threshold near 200 ms, so
+they win on reflexes rather than play. Useful training partners have to be constrained to human
+reaction windows and learn from human demonstrations.</p>
+<p>We asked whether the <em>quality</em> of those demonstrations carries through: does reinforcement
+learning initialized from professional tournament replays beat the same pipeline initialized from
+Platinum+ ranked ladder play? Two identical pipelines on the slippi-ai framework, behavior cloning
+then PPO self-play, differing only in the training data.</p>
+<p>It didn't. The imitation loss curves were nearly identical, and after RL the two agents went
+52%–48% head to head — a coin flip. The likeliest explanation is that 10 hours of RL simply isn't
+long enough for a prior to express itself, which is a compute limit rather than a finding about
+priors.</p>
+<p><a href="/posts/melee-fox-bots/">Read the write-up →</a> ·
+<a href="https://github.com/ItsBaiShiXi/RF_Melee">Source</a></p>
+<h2 id="distributed-system-for-fps-game">Distributed System for FPS Game</h2>
+<p><em>CS230 project at UC Irvine, with Chandler Prasetyo and Shu Sekigawa.</em></p>
+<p>A multiplayer first-person shooter built on the Ursina engine, used as a testbed for the
+standard netcode toolkit: a server-authoritative simulation ticking at 20 Hz, client-side
+prediction so local input feels instant, rollback-and-replay reconciliation when the server
+disagrees, ~100 ms of interpolation delay to smooth out irregular snapshot arrivals, and
+server-side hit detection so latency can't be exploited.</p>
+<p>The comparison we cared about was transport. WebSocket sends JSON over TCP and guarantees
+delivery; the UDP path packs the same state into a fixed-layout binary format with an
+application header, carries redundant input history, and acknowledges packets with a 64-bit
+arrival mask. We measured both under a Linux <code>tc</code> network emulator, sweeping added delay to
+400 ms and loss to 10%, with scripted movement so runs were comparable.</p>
+<p>Two metrics: positional error, the Euclidean distance between the server-authoritative
+position and the position the client would have computed locally, and &quot;loss of smoothness&quot;,
+the frame-to-frame change in acceleration.</p>
+<p>Prediction and reconciliation together kept positional error roughly flat as latency climbed,
+while disabling them made error grow linearly with RTT. The most interesting result was a negative one:
+<strong>the redundant input history made things slightly worse, not better.</strong> Plain
+UDP beat both WebSocket and our redundant variant under prediction, because a lost input can
+only be recovered from the very first packet that arrives after the gap — so the redundancy
+paid its bandwidth cost without buying back much. Smoothness only became acceptable with all
+three mechanisms enabled, and even then sat well short of purely local movement, since linear
+interpolation smooths position without preserving acceleration.</p>
+<p><a href="/posts/fps-distributed-system/">Read the write-up →</a> ·
+<a href="https://github.com/shugonta/CS230-FPS-Project">Source</a></p>
 <h2 id="snowfall-prediction">Snowfall prediction</h2>
 <p><em>A small side project.</em></p>
 <p>Predicting daily new snowfall at three Sierra Nevada ski resorts — Mammoth, Heavenly and
@@ -81,6 +142,16 @@ is mostly in how yesterday's conditions were changing, not in any single day's r
 and the day-over-day change in precipitation another 8.5%. Accuracy varies a lot by resort —
 Mammoth reaches R² = 0.810 and Heavenly 0.751, while Palisades Tahoe sits at 0.573.</p>
 <p><a href="https://github.com/ItsBaiShiXi/Snowfall_Predict">Source</a></p>
+<h2 id="linkup">LinkUp</h2>
+<p><em>ECS-162 final project at UC Davis, with Ryan Yu, James Fu, Andrew Fojas, Mingzhe Wu and
+Weifeng Liu.</em></p>
+<p>A study-buddy web app. Students list what and how they like to study, get matched with people
+whose preferences line up, and create or join study sessions from there. The premise is that
+social accountability does more for productivity than another todo list does.</p>
+<p>Built with Next.js and React on a Firebase backend — Firestore for data, Firebase Auth for
+sign-in — styled with Tailwind, with Cypress covering the main flows end to end.</p>
+<p><a href="https://link-up-nine-sigma.vercel.app">Try it →</a> ·
+<a href="https://github.com/ItsBaiShiXi/LinkUp">Source</a></p>
 
       </article>
     </main>

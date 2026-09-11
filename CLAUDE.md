@@ -78,7 +78,7 @@ Run from the repo root — all asset paths are absolute (`/css/site.css`, `/vide
 There are no tests. The meaningful check is to serve the site and compare against what is live:
 
 1. `python3 build.py && python3 -m http.server 8000`
-2. Confirm `/` (the bio), `/posts/vla-policy-size/` (the report), `/posts/`, `/projects/`, `/now/` all render.
+2. Confirm `/` (the bio), `/posts/`, `/projects/` and each report under `/posts/<slug>/` all render.
 3. Confirm the 3 embedded `/videos/*.mp4` return 200 and the TOC anchors resolve to real ids.
 4. For anything touching the report, screenshot `/` before and after — the design is co-authored
    work and should not drift.

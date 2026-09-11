@@ -34,10 +34,19 @@ jobs:
 
       # Denylist, so new pages and assets publish automatically and only new
       # *non-site* files ever need an entry here.
+      #
+      # videos/ is the one exception. The repo keeps all 16 rollout clips, but
+      # only the three the report embeds are worth shipping -- the other 13 are
+      # ~47 MB of artifact nobody downloads. rsync takes the first matching
+      # rule, so the includes must come before the exclude.
       - name: Stage site
         run: |
           mkdir -p _site
           rsync -a \
+            --include='videos/410m_orange2.mp4' \
+            --include='videos/410m_pushbox_fail.mp4' \
+            --include='videos/410m_pushbox_w.mp4' \
+            --exclude='videos/*' \
             --exclude='.git' \
             --exclude='.github' \
             --exclude='.claude' \
@@ -45,12 +54,27 @@ jobs:
             --exclude='content' \
             --exclude='build.py' \
             --exclude='CLAUDE.md' \
-            --exclude='TODO.md' \
             --exclude='__pycache__' \
             ./ _site/
           echo "--- staged ---"
           find _site -type f -not -path '*/videos/*' | sort
-          echo "videos: $(find _site/videos -type f | wc -l)"
+          echo "videos staged: $(find _site/videos -type f | wc -l)  ($(du -sh _site/videos | cut -f1))"
+          echo "artifact size: $(du -sh _site | cut -f1)"
+
+      # The include list above is an allowlist, so a future post embedding a
+      # different clip would silently ship a broken <video>. Fail loudly instead.
+      - name: Check every embedded video was staged
+        run: |
+          missing=0
+          for v in $(grep -rho '/videos/[A-Za-z0-9_]*\.mp4' _site --include='*.html' | sort -u); do
+            if [ -f "_site${v}" ]; then
+              echo "ok      ${v}"
+            else
+              echo "MISSING ${v}  -- add it to the rsync --include list in this workflow"
+              missing=1
+            fi
+          done
+          exit $missing
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
