@@ -1,0 +1,62 @@
+# Deploys the static site to GitHub Pages.
+#
+# There is no build here on purpose. `build.py` runs locally and its output is
+# committed, so this workflow only copies files -- a bug in the generator can
+# never take the live site down.
+name: Deploy to Pages
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      # Denylist, so new pages and assets publish automatically and only new
+      # *non-site* files ever need an entry here.
+      - name: Stage site
+        run: |
+          mkdir -p _site
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='.claude' \
+            --exclude='_site' \
+            --exclude='content' \
+            --exclude='build.py' \
+            --exclude='CLAUDE.md' \
+            --exclude='TODO.md' \
+            --exclude='__pycache__' \
+            ./ _site/
+          echo "--- staged ---"
+          find _site -type f -not -path '*/videos/*' | sort
+          echo "videos: $(find _site/videos -type f | wc -l)"
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./_site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

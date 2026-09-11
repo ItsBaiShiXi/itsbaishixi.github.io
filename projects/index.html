@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Projects&nbsp;|&nbsp;BaiShiXi&#x27;s Blog</title>
+    <meta name="description" content="Research and projects by Shengzhe Zhang, in robotics and machine learning." />
+    <link rel="canonical" href="https://baishixi.blog/projects/" />
+    <meta property="og:url" content="https://baishixi.blog/projects/" />
+    <meta property="og:site_name" content="BaiShiXi&#x27;s Blog" />
+    <meta property="og:title" content="Projects" />
+    <meta property="og:description" content="Research and projects by Shengzhe Zhang, in robotics and machine learning." />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Projects" />
+    <meta name="twitter:description" content="Research and projects by Shengzhe Zhang, in robotics and machine learning." />
+    <meta name="referrer" content="no-referrer-when-downgrade" />
+    <link href="/css/pages.css" rel="stylesheet" />
+  </head>
+  <body>
+    <header>
+      <nav>
+        <a href="/">Home</a>
+        <a href="/posts/">Posts</a>
+        <a href="/projects/" class="current">Projects</a>
+        <a href="/now/">Now</a>
+      </nav>
+      <h1>Projects</h1>
+      <p>What I&#x27;m working on. Rough reverse-chronological order.</p>
+    </header>
+    <main>      <article class="prose">
+<h2 id="how-much-policy-does-a-vla-need">How Much Policy Does a VLA Need?</h2>
+<p><em>CS295 final report, with Eric and Sean.</em></p>
+<p>How much parameter capacity does a vision-language-action model actually need in its action
+policy head? Two stages: first replacing LAPA's 7B LLaMA-2 backbone with smaller Pythia models
+behind a frozen interface, then isolating policy capacity directly by freezing FoundryVLA's
+vision and language stacks and scaling only the diffusion policy head across 6, 12 and 24
+layers (77M / 205M / 410M).</p>
+<p>Deeper heads predicted held-out actions better on all three tasks, but none produced reliable
+closed-loop control. The gap between those two facts is the interesting part.</p>
+<p><a href="/posts/vla-policy-size/">Read the report →</a></p>
+<h2 id="snowfall-prediction">Snowfall prediction</h2>
+<p><em>A small side project.</em></p>
+<p>Predicting daily new snowfall at three Sierra Nevada ski resorts — Mammoth, Heavenly and
+Palisades Tahoe — from twenty years of SNOTEL sensor telemetry, about 20,000 daily records
+pulled from the USDA NRCS API.</p>
+<p>Each station reports twelve raw measurements: snow depth, snow water equivalent, temperature,
+precipitation, humidity, wind and soil metrics. Most of the work was turning those into 68
+features — lags, rolling windows, momentum terms, and interactions — since the useful signal
+is mostly in how yesterday's conditions were changing, not in any single day's reading.</p>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th style="text-align:right">Test R²</th>
+<th style="text-align:right">RMSE</th>
+<th style="text-align:right">MAE</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Linear regression</td>
+<td style="text-align:right">0.559</td>
+<td style="text-align:right">1.67 in</td>
+<td style="text-align:right">0.57 in</td>
+</tr>
+<tr>
+<td>Random forest (tuned)</td>
+<td style="text-align:right">0.687</td>
+<td style="text-align:right">1.41 in</td>
+<td style="text-align:right">0.38 in</td>
+</tr>
+<tr>
+<td>XGBoost (tuned)</td>
+<td style="text-align:right"><strong>0.704</strong></td>
+<td style="text-align:right"><strong>1.37 in</strong></td>
+<td style="text-align:right"><strong>0.38 in</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Feature importances back up the intuition: yesterday's precipitation alone accounts for 16.1%,
+and the day-over-day change in precipitation another 8.5%. Accuracy varies a lot by resort —
+Mammoth reaches R² = 0.810 and Heavenly 0.751, while Palisades Tahoe sits at 0.573.</p>
+<p><a href="https://github.com/ItsBaiShiXi/Snowfall_Predict">Source</a></p>
+
+      </article>
+    </main>
+    <footer>
+      <span>&copy; 2026 Shengzhe Zhang</span>
+    </footer>
+  </body>
+</html>
